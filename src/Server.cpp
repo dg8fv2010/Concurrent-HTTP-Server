@@ -39,14 +39,14 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 	vector<string> buf;
 	split(string(req), string("\n"), buf);
 
-	// ¼ì²éÇëÇóÊÇ·ñÎª¿Õ
+	// æ£€æŸ¥è¯·æ±‚æ˜¯å¦ä¸ºç©º
 	if (buf[0]=="\n" || buf[0]=="\r\n")
 	{
 		PrintError(clientAddr, string("Can't parse request."));
 		return -1;
 	}
 
-	// ¼ì²éGETÇëÇó
+	// æ£€æŸ¥GETè¯·æ±‚
 	vector<string> method_buf;
 	split(buf[0], string(" "), method_buf);
 	if (toLowerString(method_buf[0])!="get")
@@ -56,6 +56,7 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 	vector<string> query_buf;
 	split(method_buf[1], string("?"), query_buf);
 
+	// instead of using cwd, you should consider taking in a parameter called "path"
 	char cwd[1024];
 	getcwd(cwd, sizeof(cwd));
 	string cwdStr(cwd);
