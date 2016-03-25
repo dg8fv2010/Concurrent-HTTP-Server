@@ -2,6 +2,13 @@
 #include <direct.h>
 #include <io.h>
 
+//#include "depends/threadpool/boost/threadpool.hpp"
+#include "threadpool.hpp"
+
+#include <boost/thread/mutex.hpp>
+
+using namespace boost::threadpool;
+
 CServer::CServer(void)
 {
 }
@@ -56,14 +63,13 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 	vector<string> query_buf;
 	split(method_buf[1], string("?"), query_buf);
 
-	// instead of using cwd, you should consider taking in a parameter called "path"
-	char cwd[1024];
-	getcwd(cwd, sizeof(cwd));
-	string cwdStr(cwd);
-	cwdStr += "/res";
-	cwdStr = replaceBackplace(cwdStr);
+	char path[1024];
+	getcwd(path, sizeof(path));
+	string absPath(path);
+	absPath += "/res";
+	absPath = replaceBackplace(absPath);
 	
-	string path = query_buf[0].substr(0, query_buf[0].rfind("/"));
+	string relPath = query_buf[0].substr(0, query_buf[0].rfind("/"));
 	string file = query_buf[0].substr(query_buf[0].rfind("/")+1);
 
 	memset(&requestInfo, 0, sizeof(requestInfo));
@@ -72,9 +78,9 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 	requestInfo.pathinfo = query_buf[0];
 	requestInfo.query = (query_buf.size() == 2 ? query_buf[1] : "");
 	requestInfo.protocal = toLowerString(method_buf[2]);
-	requestInfo.path = path;
+	requestInfo.path = relPath;
 	requestInfo.file = file;
-	requestInfo.physical_path = cwdStr+query_buf[0];
+	requestInfo.physical_path = absPath+query_buf[0];
 
 	ProcessRequest(clientSock, clientAddr, requestInfo);
 
@@ -128,7 +134,7 @@ void CServer::InitAndRun()
 	serverAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	serverAddr.sin_port = htons(PORT);
 
-	if (bind(serverSocket, (sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+	if (::bind(serverSocket, (sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
 	{
 		cout<<"bind failed"<<endl;
 		exit(1);
@@ -144,6 +150,8 @@ void CServer::InitAndRun()
 	fprintf(stdout, "[%s] Start server listening at port %d ...\n", currtime, PORT);
 	fprintf(stdout, "[%s] Waiting client connection ...\n", currtime);
 
+	pool tp(100);
+
 	while (1)
 	{
 		int clientLength = sizeof(clientAddr);
@@ -154,7 +162,8 @@ void CServer::InitAndRun()
 			exit(1);
 		}
 
-		HandleRequest(clientSocket, clientAddr);
+		//HandleRequest(clientSocket, clientAddr);
+		tp.schedule(boost::bind(&CServer::HandleRequest, this, clientSocket, clientAddr));
 
 		closesocket(clientSocket);
 	}
