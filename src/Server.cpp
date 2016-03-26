@@ -27,13 +27,14 @@ void CServer::HandleRequest(int clientSocket, sockaddr_in clientAddr)
 	if (size < 0)
 	{
 		cout<<"recv failed"<<endl;
-		exit(1);
+		//exit(1);
 	}
 	else if (size > 0)
 	{
 		//cout<<buf<<endl;
 		ParseRequest(clientSocket, clientAddr, buf);
 	}
+	closesocket(clientSocket);
 }
 
 int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *req)
@@ -164,8 +165,7 @@ void CServer::InitAndRun()
 
 		//HandleRequest(clientSocket, clientAddr);
 		tp.schedule(boost::bind(&CServer::HandleRequest, this, clientSocket, clientAddr));
-
-		closesocket(clientSocket);
+		
 	}
 
 	closesocket(serverSocket);  
