@@ -27,7 +27,7 @@ void CServer::HandleRequest(int clientSocket, sockaddr_in clientAddr)
 	if (size < 0)
 	{
 		cout<<"recv failed"<<endl;
-		//exit(1);
+		exit(1);
 	}
 	else if (size > 0)
 	{
