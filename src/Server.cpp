@@ -2,13 +2,6 @@
 #include <direct.h>
 #include <io.h>
 
-//#include "depends/threadpool/boost/threadpool.hpp"
-#include "threadpool.hpp"
-
-#include <boost/thread/mutex.hpp>
-
-using namespace boost::threadpool;
-
 CServer::CServer(void)
 {
 }
@@ -31,7 +24,6 @@ void CServer::HandleRequest(int clientSocket, sockaddr_in clientAddr)
 	}
 	else if (size > 0)
 	{
-		//cout<<buf<<endl;
 		ParseRequest(clientSocket, clientAddr, buf);
 	}
 	closesocket(clientSocket);
@@ -62,6 +54,7 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 		PrintError(clientAddr, string("That method is not implemented."));
 	}
 	vector<string> query_buf;
+	method_buf[1] = replaceAllDistinct(method_buf[1], string("%20"), string(" "));
 	split(method_buf[1], string("?"), query_buf);
 
 	char path[1024];
@@ -73,6 +66,18 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 	string relPath = query_buf[0].substr(0, query_buf[0].rfind("/"));
 	string file = query_buf[0].substr(query_buf[0].rfind("/")+1);
 
+	string lastModifiedTime = "";
+	for (int i=0;i<buf.size();i++)
+	{
+		if (buf[i].find("If-Modified-Since") != buf[i].npos)
+		{
+			int pos = buf[i].find(":");
+			int pos2 = buf[i].find("GMT");
+			lastModifiedTime = buf[i].substr(pos+2, pos2-pos+1);
+			break;
+		}
+	}
+
 	memset(&requestInfo, 0, sizeof(requestInfo));
 	
 	requestInfo.method = method_buf[0];
@@ -82,6 +87,7 @@ int CServer::ParseRequest(int clientSock, const sockaddr_in& clientAddr, char *r
 	requestInfo.path = relPath;
 	requestInfo.file = file;
 	requestInfo.physical_path = absPath+query_buf[0];
+	requestInfo.ifModifiedSince = lastModifiedTime;
 
 	ProcessRequest(clientSock, clientAddr, requestInfo);
 
@@ -101,11 +107,11 @@ int CServer::ProcessRequest(int client_sock, sockaddr_in client_addr, RequestInf
 
 	if (isDir(request_info.physical_path) == false)
 	{
-		SendFile(client_sock, client_addr, request_info.physical_path, request_info.pathinfo);
+		SendFile(client_sock, client_addr, request_info.physical_path, request_info.pathinfo, request_info.ifModifiedSince);
 	} 
 	else
 	{
-		SendIndexHtml(client_sock, client_addr, request_info.physical_path, request_info.pathinfo);
+		SendIndexHtml(client_sock, client_addr, request_info.physical_path, request_info.pathinfo, request_info.ifModifiedSince);
 	}
 
 	return 0;
@@ -151,7 +157,7 @@ void CServer::InitAndRun()
 	fprintf(stdout, "[%s] Start server listening at port %d ...\n", currtime, PORT);
 	fprintf(stdout, "[%s] Waiting client connection ...\n", currtime);
 
-	pool tp(100);
+	pool tp(MAX_CLIENT);
 
 	while (1)
 	{
@@ -183,14 +189,24 @@ void CServer::PrintError(const sockaddr_in& clientAddr, const string& msg)
 	cout<<l<<endl;
 }
 
-int CServer::SendFile(int clientSocket, const sockaddr_in& clientAddr, const string& fileName, const string& pathInfo)
+int CServer::SendFile(int clientSocket, const sockaddr_in& clientAddr, const string& fileName, const string& pathInfo, const string& lastModifiedTime)
 {
 	char buf[128], contents[8192];
-	FILE* fp;
-	size_t fileSize;
+	FILE* fp=NULL;
+	long fileSize = filesize(fileName);
+	time_t mod = getLastModifiedTime(fileName);
+
+	char timebuf[128];
+	strftime(timebuf, sizeof(timebuf), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&mod));
+	string tmp(timebuf);
+	if (tmp == lastModifiedTime)
+	{
+		SendHeaders(clientSocket, 304, string("Not Modified"), string(""), string(""), 0, mod);
+		return 1;
+	}
 
 	string mimeType = MimeContentType(fileName);
-	SendHeaders(clientSocket, 200, string("OK"), string(""), mimeType.c_str(), filesize(fileName), 0);
+	SendHeaders(clientSocket, 200, string("OK"), string(""), mimeType.c_str(), fileSize, mod);
 
 	fp = fopen(fileName.c_str(), "rb");
 	if (fp==NULL)
@@ -200,7 +216,7 @@ int CServer::SendFile(int clientSocket, const sockaddr_in& clientAddr, const str
 		PrintError(clientAddr, string(buf));
 		return -1;
 	}
-	
+
 	int num = 0;  
 	while(!feof(fp))  
 	{  
@@ -212,15 +228,15 @@ int CServer::SendFile(int clientSocket, const sockaddr_in& clientAddr, const str
 	return 0;
 }
 
-int CServer::SendIndexHtml(int client_sock, const sockaddr_in& client_addr, const string& path, const string& pathinfo)
+int CServer::SendIndexHtml(int client_sock, const sockaddr_in& client_addr, const string& path, const string& pathinfo, const string& lastModifiedTime)
 {
 	vector<string> fileList;
 	getCurDirFiles(path, fileList);
 	for (int i=0;i<fileList.size();i++)
 	{
-		if (fileList[i].find("index.html") != string::npos)
+		if (fileList[i].find("The Joel Test_ 12 Steps to Better Code - Joel on Software.html") != string::npos)
 		{
-			SendFile(client_sock, client_addr, fileList[i], pathinfo);
+			SendFile(client_sock, client_addr, fileList[i], pathinfo, lastModifiedTime);
 			return 0;
 		}
 	}
@@ -240,7 +256,7 @@ int CServer::SendHeaders(int client_sock, int status, const string& title, const
 	sprintf(buf, "Server: %s\r\n", SERVER_NAME);
 	strcat(buf_all, buf);
 
-	now = time( (time_t*) 0 );
+	now = time((time_t*)0);
 	strftime( timebuf, sizeof(timebuf), "%a, %d %b %Y %H:%M:%S GMT", gmtime( &now ) );
 	memset(buf, 0, BUFFER_SIZE);
 	sprintf(buf, "Date: %s\r\n", timebuf);
@@ -283,6 +299,11 @@ int CServer::SendHeaders(int client_sock, int status, const string& title, const
 string CServer::MimeContentType(const string& name)
 {
 	string ret; 
+	if (name.rfind(".") == name.npos)
+	{
+		return string("application/octet-stream");
+	}
+
 	string fileType=name.substr(name.rfind("."));
 
 	if (fileType.size()==0) 

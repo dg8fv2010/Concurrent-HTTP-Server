@@ -27,6 +27,39 @@ void split(const string& s, std::string& delim,std::vector<string>& ret)
 	}  
 } 
 
+string replaceAll(string& str, const string& old_value,const string& new_value)     
+{     
+	while(true)   
+	{     
+		string::size_type   pos(0);     
+		if((pos=str.find(old_value)) != string::npos)     
+		{
+			str.replace(pos,old_value.length(),new_value);     
+		}
+		else
+		{
+			break;
+		}
+	}     
+	return str;     
+}
+
+string replaceAllDistinct(string& str, const string& old_value, const string& new_value)     
+{     
+	for(string::size_type pos(0);pos!=string::npos;pos+=new_value.length())   
+	{     
+		if((pos=str.find(old_value,pos))!=string::npos)     
+		{
+			str.replace(pos,old_value.length(),new_value);     
+		}
+		else
+		{
+			break;
+		}
+	}     
+	return str;     
+}     
+
 string toUpperString(string& src)  
 {  
 	string dst;
@@ -134,4 +167,51 @@ string getFileName(const string& str)
 	int npos=str.rfind("/");
 	string name=str.substr(npos+1);
 	return name;
+}
+
+time_t SystemTimeToTimet(SYSTEMTIME st)
+{
+	FILETIME ft;
+	SystemTimeToFileTime(&st, &ft);
+
+	LONGLONG nLL;
+	ULARGE_INTEGER ui;
+
+	ui.LowPart = ft.dwLowDateTime;
+	ui.HighPart = ft.dwHighDateTime;
+	nLL = (ft.dwHighDateTime << 32) + ft.dwLowDateTime;
+	time_t pt = (long)((LONGLONG)(ui.QuadPart - 116444736000000000) / 10000000);
+
+	return pt;
+}
+
+time_t getLastModifiedTime(const string& fileName)
+{
+	HANDLE hFile = CreateFile(fileName.c_str(),              
+		GENERIC_READ,  //必须有GENERIC_READ属性才能得到时间     
+		FILE_SHARE_READ,                      
+		NULL,                   
+		OPEN_EXISTING,         
+		FILE_ATTRIBUTE_NORMAL,
+		NULL);                 
+	time_t mod = 0;
+	if (hFile != INVALID_HANDLE_VALUE) 
+	{ 
+		SYSTEMTIME sysTime;
+		FILETIME fCreateTime, fAccessTime, fWriteTime;
+
+		GetFileTime(hFile, &fCreateTime, &fAccessTime, &fWriteTime);//获取文件时间
+		FileTimeToSystemTime(&fWriteTime, &sysTime);//将文件时间转换为本地系统时间
+
+		mod = SystemTimeToTimet(sysTime);
+	}
+	return mod;
+}
+
+string getTimeStr(time_t mod)
+{
+	char timebuf[128];
+	//strftime(timebuf, sizeof(timebuf), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&mod));
+	//sprintf(buf, "Last-Modified: %s\r\n", timebuf);
+	return string(timebuf);
 }

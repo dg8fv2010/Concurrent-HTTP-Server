@@ -15,6 +15,10 @@ void getdate(char *s);
 
 void split(const string& s, std::string& delim,std::vector<string>& ret);
 
+string replaceAll(string& str, const string& old_value,const string& new_value);
+
+string replaceAllDistinct(string& str, const string& old_value, const string& new_value);
+
 string toUpperString(string& src);
 
 string toLowerString(string& src);
@@ -30,3 +34,9 @@ void getCurDirFiles(string path, vector<string>& files);
 string replaceBackplace(const string& str);
 
 string getFileName(const string& str);
+
+time_t SystemTimeToTimet(SYSTEMTIME st);
+
+time_t getLastModifiedTime(const string& fileName);
+
+string getTimeStr(time_t mod);
